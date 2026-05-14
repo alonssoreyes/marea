@@ -41,7 +41,15 @@ model User {
   email           String  @unique
   passwordHash    String
   name            String
+  /// "monthly" | "biweekly" | "weekly"
+  paymentSchedule String  @default("monthly")
+  /// Day of month (1-31) when paymentSchedule = "monthly"
   payday          Int     @default(14)
+  /// Day of week (0=Sunday..6=Saturday) when paymentSchedule = "weekly"
+  payWeekday      Int     @default(5)
+  /// Any past pay date when paymentSchedule = "biweekly".
+  /// Marea counts 14-day intervals starting from this date.
+  payAnchorDate   DateTime?
   loanPayday      Int     @default(1)
   monthlyIncome   Decimal @default(0) @db.Decimal(14, 2)
   onboardingStep  Int     @default(0)

@@ -57,7 +57,10 @@ export default function Onboarding() {
     try {
       await authApi.updateMe({
         name: user.name,
+        paymentSchedule: user.paymentSchedule,
         payday: user.payday,
+        payWeekday: user.payWeekday,
+        payAnchorDate: user.payAnchorDate ?? null,
         loanPayday: user.loanPayday,
         monthlyIncome: user.monthlyIncome,
         onboardingStep: user.onboardingStep,
@@ -188,9 +191,20 @@ export default function Onboarding() {
   );
 }
 
+const WEEKDAY_OPTIONS = [
+  { value: 1, label: "Lunes" },
+  { value: 2, label: "Martes" },
+  { value: 3, label: "Miércoles" },
+  { value: 4, label: "Jueves" },
+  { value: 5, label: "Viernes" },
+  { value: 6, label: "Sábado" },
+  { value: 0, label: "Domingo" },
+];
+
 function Step1() {
   const user = useFinance((s) => s.user);
   const updateUser = useFinance((s) => s.updateUser);
+
   return (
     <div>
       <h2 className="text-2xl font-semibold text-brand-900">Cuéntanos sobre ti</h2>
@@ -198,41 +212,116 @@ function Step1() {
         Estos datos definen tu "ciclo financiero" — el ritmo con el que Marea entiende
         tu dinero.
       </p>
-      <div className="grid sm:grid-cols-2 gap-4">
-        <div className="space-y-1.5">
-          <Label>Día de pago</Label>
-          <Input
-            type="number"
-            min={1}
-            max={31}
-            value={user.payday}
-            onChange={(e) => updateUser({ payday: Number(e.target.value) })}
-          />
-          <p className="text-xs text-ink-muted">
-            Día del mes que recibes tu sueldo. Tu ciclo va del día {user.payday} al{" "}
-            {user.payday - 1} del mes siguiente.
-          </p>
+
+      <div className="space-y-4">
+        <div>
+          <Label className="mb-2 block">¿Con qué frecuencia te pagan?</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { value: "monthly", title: "Mensual", sub: "Un día fijo del mes" },
+              { value: "biweekly", title: "Quincenal", sub: "Cada 14 días" },
+              { value: "weekly", title: "Semanal", sub: "Un día fijo de la semana" },
+            ] as const).map((opt) => {
+              const selected = user.paymentSchedule === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => updateUser({ paymentSchedule: opt.value })}
+                  className={cn(
+                    "text-left p-3 rounded-xl border transition-all",
+                    selected
+                      ? "border-brand-400 bg-brand-50 ring-2 ring-brand-100"
+                      : "border-line hover:bg-surface-soft"
+                  )}
+                >
+                  <p className={cn("text-sm font-semibold", selected ? "text-brand-700" : "text-ink")}>
+                    {opt.title}
+                  </p>
+                  <p className="text-[11px] text-ink-muted mt-0.5">{opt.sub}</p>
+                </button>
+              );
+            })}
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label>Día de pago de préstamos</Label>
-          <Input
-            type="number"
-            min={1}
-            max={31}
-            value={user.loanPayday}
-            onChange={(e) => updateUser({ loanPayday: Number(e.target.value) })}
-          />
-          <p className="text-xs text-ink-muted">Si aplica.</p>
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label>Sueldo mensual neto</Label>
-          <Input
-            type="number"
-            min={0}
-            value={user.monthlyIncome || ""}
-            onChange={(e) => updateUser({ monthlyIncome: Number(e.target.value) })}
-            placeholder="38000"
-          />
+
+        {user.paymentSchedule === "monthly" && (
+          <div className="space-y-1.5">
+            <Label>Día de pago</Label>
+            <Input
+              type="number"
+              min={1}
+              max={31}
+              value={user.payday}
+              onChange={(e) => updateUser({ payday: Number(e.target.value) })}
+            />
+            <p className="text-xs text-ink-muted">
+              Día del mes que recibes tu sueldo. Tu ciclo va del día {user.payday} al{" "}
+              {user.payday > 1 ? user.payday - 1 : 31} del mes siguiente.
+            </p>
+          </div>
+        )}
+
+        {user.paymentSchedule === "biweekly" && (
+          <div className="space-y-1.5">
+            <Label>Fecha de tu último pago</Label>
+            <Input
+              type="date"
+              value={user.payAnchorDate ? user.payAnchorDate.slice(0, 10) : ""}
+              onChange={(e) => updateUser({ payAnchorDate: e.target.value || null })}
+            />
+            <p className="text-xs text-ink-muted">
+              Marea cuenta intervalos de 14 días desde esta fecha. Puede ser cualquier
+              pago histórico — incluso uno de hace meses.
+            </p>
+          </div>
+        )}
+
+        {user.paymentSchedule === "weekly" && (
+          <div className="space-y-1.5">
+            <Label>Día de pago semanal</Label>
+            <Select
+              value={user.payWeekday}
+              onChange={(e) => updateUser({ payWeekday: Number(e.target.value) })}
+            >
+              {WEEKDAY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </Select>
+            <p className="text-xs text-ink-muted">
+              Tu ciclo inicia cada {WEEKDAY_OPTIONS.find((o) => o.value === user.payWeekday)?.label.toLowerCase()} y dura 7 días.
+            </p>
+          </div>
+        )}
+
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div className="space-y-1.5">
+            <Label>Día de pago de préstamos</Label>
+            <Input
+              type="number"
+              min={1}
+              max={31}
+              value={user.loanPayday}
+              onChange={(e) => updateUser({ loanPayday: Number(e.target.value) })}
+            />
+            <p className="text-xs text-ink-muted">Si aplica. Día del mes.</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label>
+              {user.paymentSchedule === "weekly"
+                ? "Sueldo mensual aproximado"
+                : user.paymentSchedule === "biweekly"
+                ? "Sueldo mensual (suma de las dos quincenas)"
+                : "Sueldo mensual neto"}
+            </Label>
+            <Input
+              type="number"
+              min={0}
+              value={user.monthlyIncome || ""}
+              onChange={(e) => updateUser({ monthlyIncome: Number(e.target.value) })}
+              placeholder="Ej. 15000"
+            />
+          </div>
         </div>
       </div>
     </div>

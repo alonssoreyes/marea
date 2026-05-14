@@ -11,12 +11,22 @@ export type ExpenseCategory =
   | "servicios"
   | "otros";
 
+export type PaymentSchedule = "monthly" | "biweekly" | "weekly";
+
 export interface User {
   id: ID;
   email: string;
   name: string;
-  payday: number; // day of month for main deposit
-  loanPayday: number; // day of month for loan payments
+  /** Pay-cycle type: monthly, biweekly (every 14 days), or weekly. */
+  paymentSchedule: PaymentSchedule;
+  /** Day of month (1-31) when paymentSchedule = "monthly". */
+  payday: number;
+  /** Day of week (0=Sunday .. 6=Saturday) when paymentSchedule = "weekly". */
+  payWeekday: number;
+  /** ISO date of any past pay event when paymentSchedule = "biweekly". */
+  payAnchorDate?: string | null;
+  /** Day of month for loan payments. */
+  loanPayday: number;
   monthlyIncome: number;
   onboardingStep: number; // 0..5 (5 = completed)
   createdAt: string;

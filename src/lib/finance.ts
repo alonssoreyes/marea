@@ -10,68 +10,121 @@ import {
   parseISO,
   startOfDay,
 } from "date-fns";
-import type { CreditCard, Loan, MSIPurchase } from "@/types";
+import type { CreditCard, Loan, MSIPurchase, PaymentSchedule, User } from "@/types";
 
 export interface FinancialCycle {
   start: Date;
   end: Date;
-  /** "yyyy-MM" cycle identifier, based on the start month */
+  /** Cycle identifier. Monthly = "yyyy-MM"; biweekly/weekly include the day. */
   label: string;
 }
 
 /**
- * The user's "financial month" runs from payday (default 14) to the day before
- * the next payday. This function calculates the current cycle boundaries
- * given a reference date and the payday.
+ * User's pay-cycle configuration.
+ * We also accept a plain `number` for backward compatibility with older callers
+ * that only passed `payday` (monthly by default).
  */
-export function getFinancialCycle(reference: Date, payday: number): FinancialCycle {
-  const ref = startOfDay(reference);
-  const day = ref.getDate();
-  let start: Date;
-  let end: Date;
-  if (day >= payday) {
-    start = new Date(ref.getFullYear(), ref.getMonth(), payday);
-    end = endOfDay(addMonths(start, 1));
-    end.setDate(end.getDate() - 1);
-  } else {
-    start = new Date(ref.getFullYear(), ref.getMonth() - 1, payday);
-    end = endOfDay(addMonths(start, 1));
-    end.setDate(end.getDate() - 1);
+export type PaymentConfig =
+  | { schedule: "monthly"; payday: number }
+  | { schedule: "biweekly"; anchorDate: string | Date }
+  | { schedule: "weekly"; weekday: number }
+  | number;
+
+function normalizeConfig(cfg: PaymentConfig): Exclude<PaymentConfig, number> {
+  return typeof cfg === "number" ? { schedule: "monthly", payday: cfg } : cfg;
+}
+
+/** Build a PaymentConfig from the relevant fields on a User. */
+export function userPaymentConfig(user: Pick<User, "paymentSchedule" | "payday" | "payWeekday" | "payAnchorDate">): Exclude<PaymentConfig, number> {
+  if (user.paymentSchedule === "biweekly" && user.payAnchorDate) {
+    return { schedule: "biweekly", anchorDate: user.payAnchorDate };
   }
-  return { start, end, label: format(start, "yyyy-MM") };
-}
-
-/** Returns the cycle prior to the given one. */
-export function previousCycle(cycle: FinancialCycle, payday: number): FinancialCycle {
-  const ref = new Date(cycle.start);
-  ref.setDate(ref.getDate() - 1); // last day of previous cycle
-  return getFinancialCycle(ref, payday);
-}
-
-/** Returns the cycle following the given one. */
-export function nextCycle(cycle: FinancialCycle, payday: number): FinancialCycle {
-  const ref = new Date(cycle.end);
-  ref.setDate(ref.getDate() + 1); // first day of next cycle
-  return getFinancialCycle(ref, payday);
+  if (user.paymentSchedule === "weekly") {
+    return { schedule: "weekly", weekday: user.payWeekday };
+  }
+  return { schedule: "monthly", payday: user.payday };
 }
 
 /**
- * Returns `count` cycles into the past from the reference date's cycle.
- * The first in the array is the most recent.
+ * The user's "financial cycle" runs from their payday up to (but not including) the next one.
+ * Supports three modes: monthly, biweekly (every 14 days), and weekly.
  */
+export function getFinancialCycle(reference: Date, config: PaymentConfig): FinancialCycle {
+  const cfg = normalizeConfig(config);
+  const ref = startOfDay(reference);
+
+  if (cfg.schedule === "monthly") {
+    const payday = cfg.payday;
+    let start: Date;
+    let end: Date;
+    if (ref.getDate() >= payday) {
+      start = new Date(ref.getFullYear(), ref.getMonth(), payday);
+      end = endOfDay(addMonths(start, 1));
+      end.setDate(end.getDate() - 1);
+    } else {
+      start = new Date(ref.getFullYear(), ref.getMonth() - 1, payday);
+      end = endOfDay(addMonths(start, 1));
+      end.setDate(end.getDate() - 1);
+    }
+    return { start, end, label: format(start, "yyyy-MM") };
+  }
+
+  if (cfg.schedule === "biweekly") {
+    const anchor = startOfDay(new Date(cfg.anchorDate));
+    // Count how many 14-day intervals have passed from the anchor to ref.
+    const diff = differenceInCalendarDays(ref, anchor);
+    const periods = Math.floor(diff / 14);
+    const start = new Date(anchor);
+    start.setDate(start.getDate() + periods * 14);
+    const end = endOfDay(new Date(start));
+    end.setDate(end.getDate() + 13);
+    return { start, end, label: `bw-${format(start, "yyyy-MM-dd")}` };
+  }
+
+  // weekly
+  const weekday = cfg.weekday;
+  const start = startOfDay(new Date(ref));
+  // Step back to the matching weekday (Sunday = 0).
+  const diff = (start.getDay() - weekday + 7) % 7;
+  start.setDate(start.getDate() - diff);
+  const end = endOfDay(new Date(start));
+  end.setDate(end.getDate() + 6);
+  return { start, end, label: `wk-${format(start, "yyyy-MM-dd")}` };
+}
+
+/** Returns the cycle immediately prior to the given one. */
+export function previousCycle(cycle: FinancialCycle, config: PaymentConfig): FinancialCycle {
+  const ref = new Date(cycle.start);
+  ref.setDate(ref.getDate() - 1);
+  return getFinancialCycle(ref, config);
+}
+
+/** Returns the cycle immediately after the given one. */
+export function nextCycle(cycle: FinancialCycle, config: PaymentConfig): FinancialCycle {
+  const ref = new Date(cycle.end);
+  ref.setDate(ref.getDate() + 1);
+  return getFinancialCycle(ref, config);
+}
+
+/** Returns `count` cycles going backwards from the reference date's cycle. */
 export function getCyclesInRange(
   reference: Date,
-  payday: number,
+  config: PaymentConfig,
   count: number
 ): FinancialCycle[] {
   const cycles: FinancialCycle[] = [];
-  let current = getFinancialCycle(reference, payday);
+  let current = getFinancialCycle(reference, config);
   cycles.push(current);
   for (let i = 1; i < count; i++) {
-    current = previousCycle(current, payday);
+    current = previousCycle(current, config);
     cycles.push(current);
   }
   return cycles;
+}
+
+/** Human-readable schedule label, for display in the UI. */
+export function paymentScheduleLabel(schedule: PaymentSchedule): string {
+  return schedule === "monthly" ? "Mensual" : schedule === "biweekly" ? "Quincenal (cada 14 días)" : "Semanal";
 }
 
 /** Checks if a date falls within a cycle. */

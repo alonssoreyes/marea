@@ -68,7 +68,10 @@ type ServerUser = {
   id: string;
   email: string;
   name: string;
+  paymentSchedule: "monthly" | "biweekly" | "weekly";
   payday: number;
+  payWeekday: number;
+  payAnchorDate: string | null;
   loanPayday: number;
   monthlyIncome: number | string;
   onboardingStep: number;
@@ -76,14 +79,24 @@ type ServerUser = {
   updatedAt: string;
 };
 
+type UpdateMePatch = Partial<{
+  name: string;
+  paymentSchedule: "monthly" | "biweekly" | "weekly";
+  payday: number;
+  payWeekday: number;
+  payAnchorDate: string | null;
+  loanPayday: number;
+  monthlyIncome: number;
+  onboardingStep: number;
+}>;
+
 export const authApi = {
   register: (data: { name: string; email: string; password: string }) =>
     api.post<{ user: ServerUser; token: string }>("/auth/register", data),
   login: (data: { email: string; password: string }) =>
     api.post<{ user: ServerUser; token: string }>("/auth/login", data),
   me: () => api.get<{ user: ServerUser }>("/auth/me"),
-  updateMe: (patch: Partial<{ name: string; payday: number; loanPayday: number; monthlyIncome: number; onboardingStep: number }>) =>
-    api.patch<{ user: ServerUser }>("/auth/me", patch),
+  updateMe: (patch: UpdateMePatch) => api.patch<{ user: ServerUser }>("/auth/me", patch),
   changePassword: (data: { currentPassword: string; newPassword: string }) =>
     api.post<void>("/auth/change-password", data),
 };

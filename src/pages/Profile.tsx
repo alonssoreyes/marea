@@ -5,10 +5,22 @@ import { useAuth } from "@/store/auth";
 import { ApiError, authApi } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { toast } from "@/components/ui/Toaster";
 import { formatCurrency } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import type { PaymentSchedule } from "@/types";
+
+const WEEKDAYS = [
+  { value: 1, label: "Lunes" },
+  { value: 2, label: "Martes" },
+  { value: 3, label: "Miércoles" },
+  { value: 4, label: "Jueves" },
+  { value: 5, label: "Viernes" },
+  { value: 6, label: "Sábado" },
+  { value: 0, label: "Domingo" },
+];
 
 export default function Profile() {
   const user = useFinance((s) => s.user);
@@ -16,7 +28,10 @@ export default function Profile() {
 
   const [form, setForm] = useState({
     name: user.name,
+    paymentSchedule: user.paymentSchedule,
     payday: user.payday,
+    payWeekday: user.payWeekday,
+    payAnchorDate: user.payAnchorDate ? user.payAnchorDate.slice(0, 10) : "",
     loanPayday: user.loanPayday,
     monthlyIncome: user.monthlyIncome,
   });
@@ -28,13 +43,19 @@ export default function Profile() {
     try {
       const res = await authApi.updateMe({
         name: form.name,
+        paymentSchedule: form.paymentSchedule,
         payday: form.payday,
+        payWeekday: form.payWeekday,
+        payAnchorDate: form.payAnchorDate || null,
         loanPayday: form.loanPayday,
         monthlyIncome: form.monthlyIncome,
       });
       updateUser({
         name: res.user.name,
+        paymentSchedule: res.user.paymentSchedule,
         payday: res.user.payday,
+        payWeekday: res.user.payWeekday,
+        payAnchorDate: res.user.payAnchorDate,
         loanPayday: res.user.loanPayday,
         monthlyIncome: Number(res.user.monthlyIncome),
       });
@@ -64,7 +85,37 @@ export default function Profile() {
               <Label>Nombre</Label>
               <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+
+            <div>
+              <Label className="mb-2 block">Esquema de pago</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: "monthly", title: "Mensual", sub: "Día fijo del mes" },
+                  { value: "biweekly", title: "Quincenal", sub: "Cada 14 días" },
+                  { value: "weekly", title: "Semanal", sub: "Día de la semana" },
+                ] as Array<{ value: PaymentSchedule; title: string; sub: string }>).map((opt) => {
+                  const selected = form.paymentSchedule === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, paymentSchedule: opt.value })}
+                      className={cn(
+                        "text-left p-3 rounded-xl border transition-all",
+                        selected
+                          ? "border-brand-400 bg-brand-50 ring-2 ring-brand-100"
+                          : "border-line hover:bg-surface-soft"
+                      )}
+                    >
+                      <p className={cn("text-sm font-semibold", selected ? "text-brand-700" : "text-ink")}>{opt.title}</p>
+                      <p className="text-[11px] text-ink-muted mt-0.5">{opt.sub}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {form.paymentSchedule === "monthly" && (
               <div className="space-y-1.5">
                 <Label>Día de pago</Label>
                 <Input
@@ -75,6 +126,35 @@ export default function Profile() {
                   onChange={(e) => setForm({ ...form, payday: Number(e.target.value) })}
                 />
               </div>
+            )}
+
+            {form.paymentSchedule === "biweekly" && (
+              <div className="space-y-1.5">
+                <Label>Fecha de tu último pago (ancla)</Label>
+                <Input
+                  type="date"
+                  value={form.payAnchorDate}
+                  onChange={(e) => setForm({ ...form, payAnchorDate: e.target.value })}
+                />
+                <p className="text-[11px] text-ink-muted">Marea cuenta intervalos de 14 días desde esta fecha.</p>
+              </div>
+            )}
+
+            {form.paymentSchedule === "weekly" && (
+              <div className="space-y-1.5">
+                <Label>Día de pago semanal</Label>
+                <Select
+                  value={form.payWeekday}
+                  onChange={(e) => setForm({ ...form, payWeekday: Number(e.target.value) })}
+                >
+                  {WEEKDAYS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </Select>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Día de pago de préstamos</Label>
                 <Input
@@ -85,12 +165,13 @@ export default function Profile() {
                   onChange={(e) => setForm({ ...form, loanPayday: Number(e.target.value) })}
                 />
               </div>
-              <div className="space-y-1.5 col-span-2">
+              <div className="space-y-1.5">
                 <Label>Sueldo mensual neto</Label>
                 <Input
                   type="number"
                   value={form.monthlyIncome || ""}
                   onChange={(e) => setForm({ ...form, monthlyIncome: Number(e.target.value) })}
+                  placeholder="Ej. 15000"
                 />
                 <p className="text-[11px] text-ink-muted">Actual: {formatCurrency(user.monthlyIncome)}</p>
               </div>

@@ -37,8 +37,8 @@
     --c-surface-soft: 30 41 59;   /* slate-800 */
     --c-surface-muted: 51 65 85;  /* slate-700 */
     --c-line: 51 65 85;           /* slate-700 */
-    /* brand invertido: las versiones suaves se vuelven oscuras-translúcidas,
-       las oscuras se vuelven claras para legibilidad sobre fondo oscuro */
+    /* Inverted brand scale: light tints become dark/translucent, and dark
+       shades become light so they remain legible on a dark background. */
     --c-brand-50: 30 58 95;       /* brand-900 oscuro */
     --c-brand-100: 30 64 175;     /* brand-800 */
     --c-brand-200: 29 78 216;     /* brand-700 */

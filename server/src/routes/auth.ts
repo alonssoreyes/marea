@@ -23,7 +23,10 @@ const SAFE_USER_SELECT = {
   id: true,
   email: true,
   name: true,
+  paymentSchedule: true,
   payday: true,
+  payWeekday: true,
+  payAnchorDate: true,
   loanPayday: true,
   monthlyIncome: true,
   onboardingStep: true,
@@ -82,7 +85,10 @@ router.get(
 
 const updateUserSchema = z.object({
   name: z.string().min(1).max(80).optional(),
+  paymentSchedule: z.enum(["monthly", "biweekly", "weekly"]).optional(),
   payday: z.number().int().min(1).max(31).optional(),
+  payWeekday: z.number().int().min(0).max(6).optional(),
+  payAnchorDate: z.string().nullable().optional(),
   loanPayday: z.number().int().min(1).max(31).optional(),
   monthlyIncome: z.number().min(0).optional(),
   onboardingStep: z.number().int().min(0).max(5).optional(),
@@ -93,9 +99,15 @@ router.patch(
   requireAuth,
   asyncHandler(async (req, res) => {
     const data = updateUserSchema.parse(req.body);
+    const { payAnchorDate, ...rest } = data;
     const user = await prisma.user.update({
       where: { id: req.userId! },
-      data,
+      data: {
+        ...rest,
+        ...(payAnchorDate !== undefined
+          ? { payAnchorDate: payAnchorDate ? new Date(payAnchorDate) : null }
+          : {}),
+      },
       select: SAFE_USER_SELECT,
     });
     res.json({ user });

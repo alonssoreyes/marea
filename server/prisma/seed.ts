@@ -1,19 +1,19 @@
 /**
- * Seed script — actualmente vacío.
+ * Seed script — currently empty.
  *
- * Marea opera contra una base de datos limpia. Los usuarios se crean vía
- * `POST /api/auth/register` y configuran sus cuentas, tarjetas y demás
- * desde el wizard de onboarding.
+ * Marea runs against a clean database. Users are created via
+ * `POST /api/auth/register` and configure their accounts, cards, etc.
+ * through the onboarding wizard.
  *
- * Si quieres datos de prueba para desarrollo, agrégalos aquí dentro de la
- * función main() y corre `npm run seed`.
+ * If you want development fixtures, add them inside main() below and
+ * run `npm run seed`.
  */
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("🌊 No se sembraron datos. La BD queda limpia.");
+  console.log("🌊 No seed data inserted. Database stays clean.");
 }
 
 main()
