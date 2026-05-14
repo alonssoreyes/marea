@@ -1,0 +1,298 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ExpenseCategory {
+  alimentos
+  transporte
+  entretenimiento
+  salud
+  hogar
+  ropa
+  tecnologia
+  servicios
+  otros
+}
+
+enum SourceKind {
+  account
+  card
+}
+
+enum IncomeSource {
+  sueldo
+  aguinaldo
+  bono
+  freelance
+  reembolso
+  regalo
+  venta
+  intereses
+  otro
+}
+
+model User {
+  id              String  @id @default(cuid())
+  email           String  @unique
+  passwordHash    String
+  name            String
+  payday          Int     @default(14)
+  loanPayday      Int     @default(1)
+  monthlyIncome   Decimal @default(0) @db.Decimal(14, 2)
+  onboardingStep  Int     @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  accounts        Account[]
+  cards           CreditCard[]
+  fixedExpenses   FixedExpense[]
+  cardExpenses    CreditCardExpense[]
+  debitExpenses   DebitExpense[]
+  incomeEvents    IncomeEvent[]
+  transfers       Transfer[]
+  loans           Loan[]
+  msi             MSIPurchase[]
+  goals           SavingsGoal[]
+  budgets         Budget[]
+}
+
+model Budget {
+  id        String           @id @default(cuid())
+  userId    String
+  category  ExpenseCategory
+  amount    Decimal          @db.Decimal(14, 2)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, category])
+  @@index([userId])
+}
+
+model Account {
+  id         String   @id @default(cuid())
+  userId     String
+  bank       String
+  alias      String
+  balance    Decimal  @db.Decimal(14, 2)
+  minBalance Decimal? @db.Decimal(14, 2)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  debitExpenses  DebitExpense[]
+  incomeEvents   IncomeEvent[]
+  transfersFrom  Transfer[]      @relation("TransferFrom")
+  transfersTo    Transfer[]      @relation("TransferTo")
+
+  @@index([userId])
+}
+
+model CreditCard {
+  id        String  @id @default(cuid())
+  userId    String
+  bank      String
+  alias     String
+  cardLimit Decimal @db.Decimal(14, 2)
+  cutoffDay Int
+  dueDay    Int
+  balance   Decimal @db.Decimal(14, 2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expenses CreditCardExpense[]
+
+  @@index([userId])
+}
+
+model FixedExpense {
+  id          String     @id @default(cuid())
+  userId      String
+  name        String
+  amount      Decimal    @db.Decimal(14, 2)
+  payDay      Int
+  sourceKind  SourceKind
+  sourceId    String
+  paidCycles  String[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model CreditCardExpense {
+  id            String           @id @default(cuid())
+  userId        String
+  cardId        String
+  amount        Decimal          @db.Decimal(14, 2)
+  description   String
+  category      ExpenseCategory  @default(otros)
+  date          DateTime
+  billingCycle  String           // "yyyy-MM"
+  dueDate       DateTime
+  tags          String[]         @default([])
+  createdAt     DateTime         @default(now())
+
+  user User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card CreditCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([cardId, billingCycle])
+}
+
+model DebitExpense {
+  id          String          @id @default(cuid())
+  userId      String
+  accountId   String
+  amount      Decimal         @db.Decimal(14, 2)
+  description String
+  category    ExpenseCategory @default(otros)
+  date        DateTime
+  tags        String[]        @default([])
+  createdAt   DateTime        @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([accountId, date])
+}
+
+model Loan {
+  id              String        @id @default(cuid())
+  userId          String
+  bank            String
+  originalAmount  Decimal       @db.Decimal(14, 2)
+  remainingAmount Decimal       @db.Decimal(14, 2)
+  annualRate      Decimal       @db.Decimal(6, 4)
+  totalPayments   Int
+  monthlyPayment  Decimal       @db.Decimal(14, 2)
+  startDate       DateTime
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments LoanPayment[]
+
+  @@index([userId])
+}
+
+model LoanPayment {
+  id        String   @id @default(cuid())
+  loanId    String
+  date      DateTime @default(now())
+  amount    Decimal  @db.Decimal(14, 2)
+  principal Decimal  @db.Decimal(14, 2)
+  interest  Decimal  @db.Decimal(14, 2)
+
+  loan Loan @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  @@index([loanId])
+}
+
+model MSIPurchase {
+  id            String        @id @default(cuid())
+  userId        String
+  description   String
+  store         String
+  totalAmount   Decimal       @db.Decimal(14, 2)
+  totalMonths   Int
+  monthsPaid    Int           @default(0)
+  monthlyAmount Decimal       @db.Decimal(14, 2)
+  startDate     DateTime
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments MSIPayment[]
+
+  @@index([userId])
+}
+
+model MSIPayment {
+  id     String   @id @default(cuid())
+  msiId  String
+  date   DateTime @default(now())
+  amount Decimal  @db.Decimal(14, 2)
+
+  msi MSIPurchase @relation(fields: [msiId], references: [id], onDelete: Cascade)
+
+  @@index([msiId])
+}
+
+model SavingsGoal {
+  id            String                @id @default(cuid())
+  userId        String
+  name          String
+  description   String?
+  targetAmount  Decimal               @db.Decimal(14, 2)
+  currentAmount Decimal               @default(0) @db.Decimal(14, 2)
+  targetDate    DateTime?
+  emoji         String                @default("🎯")
+  completedAt   DateTime?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  contributions SavingsContribution[]
+
+  @@index([userId])
+}
+
+model IncomeEvent {
+  id          String       @id @default(cuid())
+  userId      String
+  accountId   String
+  amount      Decimal      @db.Decimal(14, 2)
+  source      IncomeSource @default(otro)
+  description String?
+  date        DateTime
+  createdAt   DateTime     @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([accountId, date])
+}
+
+model Transfer {
+  id            String   @id @default(cuid())
+  userId        String
+  fromAccountId String
+  toAccountId   String
+  amount        Decimal  @db.Decimal(14, 2)
+  date          DateTime
+  note          String?
+  createdAt     DateTime @default(now())
+
+  user        User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromAccount Account @relation("TransferFrom", fields: [fromAccountId], references: [id], onDelete: Cascade)
+  toAccount   Account @relation("TransferTo", fields: [toAccountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([fromAccountId, date])
+  @@index([toAccountId, date])
+}
+
+model SavingsContribution {
+  id        String   @id @default(cuid())
+  goalId    String
+  accountId String?
+  date      DateTime @default(now())
+  amount    Decimal  @db.Decimal(14, 2)
+  note      String?
+
+  goal SavingsGoal @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([goalId])
+}

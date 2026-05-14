@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: marea-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: marea
+      POSTGRES_PASSWORD: marea
+      POSTGRES_DB: marea
+    ports:
+      - "5433:5432"
+    volumes:
+      - marea_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U marea -d marea"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  marea_pgdata:
