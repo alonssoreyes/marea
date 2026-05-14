@@ -158,6 +158,7 @@ export function toLoan(raw: any): Loan {
     monthlyPayment: num(raw.monthlyPayment),
     payments: (raw.payments ?? []).map(toLoanPayment),
     startDate: iso(raw.startDate),
+    sourceAccountId: raw.sourceAccountId ?? null,
   };
 }
 
@@ -173,6 +174,11 @@ export function toLoanPayment(raw: any): LoanPayment {
 }
 
 export function toMSI(raw: any): MSIPurchase {
+  const source: PaymentSource | null = raw.sourceKind && raw.sourceId
+    ? raw.sourceKind === "card"
+      ? { kind: "card", id: raw.sourceId }
+      : { kind: "account", id: raw.sourceId }
+    : null;
   return {
     id: raw.id,
     userId: raw.userId,
@@ -184,6 +190,7 @@ export function toMSI(raw: any): MSIPurchase {
     monthlyAmount: num(raw.monthlyAmount),
     startDate: iso(raw.startDate),
     payments: (raw.payments ?? []).map(toMSIPayment),
+    source,
   };
 }
 

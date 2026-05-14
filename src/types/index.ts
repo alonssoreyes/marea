@@ -140,6 +140,8 @@ export interface Loan {
   payments: LoanPayment[];
   monthlyPayment: number;
   startDate: string; // ISO
+  /** Account that funds the monthly payment. */
+  sourceAccountId?: ID | null;
 }
 
 export interface LoanPayment {
@@ -162,6 +164,8 @@ export interface MSIPurchase {
   monthlyAmount: number;
   startDate: string;
   payments: MSIPayment[];
+  /** Where each monthly installment is charged. */
+  source?: PaymentSource | null;
 }
 
 export interface MSIPayment {

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/error.js";
@@ -14,6 +15,8 @@ const baseSchema = z.object({
   totalMonths: z.number().int().min(1).max(60),
   monthlyAmount: z.number().min(0),
   startDate: z.coerce.date(),
+  sourceKind: z.enum(["account", "card"]).nullable().optional(),
+  sourceId: z.string().nullable().optional(),
 });
 
 router.get(
@@ -66,7 +69,8 @@ router.post(
     if (msi.monthsPaid >= msi.totalMonths) {
       return res.status(409).json({ error: "Already fully paid" });
     }
-    const [payment] = await prisma.$transaction([
+    const amount = Number(msi.monthlyAmount);
+    const ops: Prisma.PrismaPromise<unknown>[] = [
       prisma.mSIPayment.create({
         data: { msiId: msi.id, amount: msi.monthlyAmount },
       }),
@@ -74,7 +78,35 @@ router.post(
         where: { id: msi.id },
         data: { monthsPaid: { increment: 1 } },
       }),
-    ]);
+    ];
+
+    if (msi.sourceKind === "account" && msi.sourceId) {
+      const acc = await prisma.account.findFirst({
+        where: { id: msi.sourceId, userId: req.userId! },
+      });
+      if (acc) {
+        ops.push(
+          prisma.account.update({
+            where: { id: acc.id },
+            data: { balance: new Prisma.Decimal(Number(acc.balance)).sub(amount) },
+          })
+        );
+      }
+    } else if (msi.sourceKind === "card" && msi.sourceId) {
+      const card = await prisma.creditCard.findFirst({
+        where: { id: msi.sourceId, userId: req.userId! },
+      });
+      if (card) {
+        ops.push(
+          prisma.creditCard.update({
+            where: { id: card.id },
+            data: { balance: new Prisma.Decimal(Number(card.balance)).add(amount) },
+          })
+        );
+      }
+    }
+
+    const [payment] = await prisma.$transaction(ops);
     res.status(201).json({ payment });
   })
 );

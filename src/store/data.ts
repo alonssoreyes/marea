@@ -430,10 +430,31 @@ export const useFinance = create<FinanceState>()(
       },
       toggleFixedExpensePaid: async (id, cycle) => {
         try {
+          const prev = get().fixedExpenses.find((f) => f.id === id);
+          const wasPaid = prev?.paidCycles.includes(cycle) ?? false;
           const res = await fixedExpensesApi.togglePaid(id, cycle);
           const updated = toFixedExpense(res.fixedExpense);
+          // sign: paying now = -1 for accounts (balance down) / +1 for cards (debt up);
+          // unpaying reverses it.
+          const sign = wasPaid ? -1 : 1;
           set((s) => ({
             fixedExpenses: s.fixedExpenses.map((f) => (f.id === id ? updated : f)),
+            accounts:
+              updated.source.kind === "account"
+                ? s.accounts.map((a) =>
+                    a.id === updated.source.id
+                      ? { ...a, balance: a.balance - sign * updated.amount }
+                      : a
+                  )
+                : s.accounts,
+            cards:
+              updated.source.kind === "card"
+                ? s.cards.map((c) =>
+                    c.id === updated.source.id
+                      ? { ...c, balance: c.balance + sign * updated.amount }
+                      : c
+                  )
+                : s.cards,
           }));
         } catch (err) {
           handleError(err, "No se pudo actualizar el estado del gasto");
@@ -635,6 +656,7 @@ export const useFinance = create<FinanceState>()(
             totalPayments: data.totalPayments,
             monthlyPayment: data.monthlyPayment,
             startDate: data.startDate,
+            sourceAccountId: data.sourceAccountId ?? null,
           });
           const loan = toLoan(res.loan);
           set((s) => ({ loans: [...s.loans, loan] }));
@@ -657,11 +679,20 @@ export const useFinance = create<FinanceState>()(
       },
       registerLoanPayment: async (loanId, extra = 0) => {
         try {
+          const loan = get().loans.find((l) => l.id === loanId);
           await loansApi.registerPayment(loanId, extra);
-          // Re-read the complete loan from server to get payments + remainingAmount
           const list = await loansApi.list();
           const loans = (list.loans as any[]).map(toLoan);
-          set({ loans });
+          set((s) => ({
+            loans,
+            accounts: loan?.sourceAccountId
+              ? s.accounts.map((a) =>
+                  a.id === loan.sourceAccountId
+                    ? { ...a, balance: a.balance - (loan.monthlyPayment + extra) }
+                    : a
+                )
+              : s.accounts,
+          }));
           return true;
         } catch (err) {
           handleError(err, "No se pudo registrar el pago");
@@ -689,6 +720,8 @@ export const useFinance = create<FinanceState>()(
             totalMonths: data.totalMonths,
             monthlyAmount: data.monthlyAmount,
             startDate: data.startDate,
+            sourceKind: data.source?.kind ?? null,
+            sourceId: data.source?.id ?? null,
           });
           const msi = toMSI(res.msi);
           set((s) => ({ msi: [...s.msi, msi] }));
@@ -700,7 +733,13 @@ export const useFinance = create<FinanceState>()(
       },
       updateMSI: async (id, patch) => {
         try {
-          const res = await msiApi.update(id, patch as any);
+          const { source, ...rest } = patch as any;
+          const apiPatch: any = { ...rest };
+          if (source !== undefined) {
+            apiPatch.sourceKind = source?.kind ?? null;
+            apiPatch.sourceId = source?.id ?? null;
+          }
+          const res = await msiApi.update(id, apiPatch);
           const msi = toMSI(res.msi);
           set((s) => ({ msi: s.msi.map((m) => (m.id === id ? msi : m)) }));
           return msi;
@@ -711,10 +750,29 @@ export const useFinance = create<FinanceState>()(
       },
       registerMSIPayment: async (msiId) => {
         try {
+          const prev = get().msi.find((m) => m.id === msiId);
           await msiApi.registerPayment(msiId);
           const list = await msiApi.list();
           const msi = (list.msi as any[]).map(toMSI);
-          set({ msi });
+          set((s) => ({
+            msi,
+            accounts:
+              prev?.source?.kind === "account"
+                ? s.accounts.map((a) =>
+                    a.id === prev.source!.id
+                      ? { ...a, balance: a.balance - prev.monthlyAmount }
+                      : a
+                  )
+                : s.accounts,
+            cards:
+              prev?.source?.kind === "card"
+                ? s.cards.map((c) =>
+                    c.id === prev.source!.id
+                      ? { ...c, balance: c.balance + prev.monthlyAmount }
+                      : c
+                  )
+                : s.cards,
+          }));
           return true;
         } catch (err) {
           handleError(err, "No se pudo registrar el pago MSI");

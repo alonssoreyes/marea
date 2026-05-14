@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/auth.js";
 import { asyncHandler } from "../middleware/error.js";
@@ -59,14 +60,51 @@ router.post(
       where: { id: String(req.params.id), userId: req.userId! },
     });
     if (!fixed) return res.status(404).json({ error: "Not found" });
-    const next = fixed.paidCycles.includes(cycle)
+    const wasPaid = fixed.paidCycles.includes(cycle);
+    const next = wasPaid
       ? fixed.paidCycles.filter((c) => c !== cycle)
       : [...fixed.paidCycles, cycle];
-    const updated = await prisma.fixedExpense.update({
-      where: { id: fixed.id },
-      data: { paidCycles: next },
-    });
-    res.json({ fixedExpense: updated });
+
+    // Marking paid: debit source. Unmarking: credit it back.
+    // For "account" → balance goes down; for "card" → debt (balance) goes up.
+    const sign = wasPaid ? -1 : 1;
+    const delta = new Prisma.Decimal(Number(fixed.amount)).mul(sign);
+
+    const ops: Prisma.PrismaPromise<unknown>[] = [
+      prisma.fixedExpense.update({
+        where: { id: fixed.id },
+        data: { paidCycles: next },
+      }),
+    ];
+
+    if (fixed.sourceKind === "account") {
+      const acc = await prisma.account.findFirst({
+        where: { id: fixed.sourceId, userId: req.userId! },
+      });
+      if (acc) {
+        ops.push(
+          prisma.account.update({
+            where: { id: acc.id },
+            data: { balance: new Prisma.Decimal(Number(acc.balance)).sub(delta) },
+          })
+        );
+      }
+    } else if (fixed.sourceKind === "card") {
+      const card = await prisma.creditCard.findFirst({
+        where: { id: fixed.sourceId, userId: req.userId! },
+      });
+      if (card) {
+        ops.push(
+          prisma.creditCard.update({
+            where: { id: card.id },
+            data: { balance: new Prisma.Decimal(Number(card.balance)).add(delta) },
+          })
+        );
+      }
+    }
+
+    const results = await prisma.$transaction(ops);
+    res.json({ fixedExpense: results[0] });
   })
 );
 

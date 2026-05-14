@@ -17,6 +17,7 @@ const baseSchema = z.object({
   totalPayments: z.number().int().min(1),
   monthlyPayment: z.number().min(0),
   startDate: z.coerce.date(),
+  sourceAccountId: z.string().nullable().optional(),
 });
 
 router.get(
@@ -76,11 +77,13 @@ router.post(
       monthlyPayment: Number(loan.monthlyPayment),
     });
 
-    const [payment] = await prisma.$transaction([
+    const totalPaid = Number(loan.monthlyPayment) + extra;
+
+    const ops: Prisma.PrismaPromise<unknown>[] = [
       prisma.loanPayment.create({
         data: {
           loanId: loan.id,
-          amount: Number(loan.monthlyPayment) + extra,
+          amount: totalPaid,
           principal: principal + extra,
           interest,
         },
@@ -91,7 +94,23 @@ router.post(
           remainingAmount: Prisma.Decimal.max(new Prisma.Decimal(0), new Prisma.Decimal(newBalance - extra)),
         },
       }),
-    ]);
+    ];
+
+    if (loan.sourceAccountId) {
+      const acc = await prisma.account.findFirst({
+        where: { id: loan.sourceAccountId, userId: req.userId! },
+      });
+      if (acc) {
+        ops.push(
+          prisma.account.update({
+            where: { id: acc.id },
+            data: { balance: new Prisma.Decimal(Number(acc.balance)).sub(totalPaid) },
+          })
+        );
+      }
+    }
+
+    const [payment] = await prisma.$transaction(ops);
     res.status(201).json({ payment });
   })
 );

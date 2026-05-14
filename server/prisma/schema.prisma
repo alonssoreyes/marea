@@ -185,6 +185,8 @@ model Loan {
   totalPayments   Int
   monthlyPayment  Decimal       @db.Decimal(14, 2)
   startDate       DateTime
+  /// Account that funds the monthly payment. Required for new loans; nullable for legacy data.
+  sourceAccountId String?
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
 
@@ -217,6 +219,9 @@ model MSIPurchase {
   monthsPaid    Int           @default(0)
   monthlyAmount Decimal       @db.Decimal(14, 2)
   startDate     DateTime
+  /// "account" o "card" — origen del pago mensual.
+  sourceKind    SourceKind?
+  sourceId      String?
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

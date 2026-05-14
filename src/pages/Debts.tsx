@@ -22,7 +22,7 @@ import {
 import { Badge } from "@/components/ui/Badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/Tabs";
 import { Progress, ProgressRing } from "@/components/ui/Progress";
-import { Input } from "@/components/ui/Input";
+import { Input, Select } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { EmptyState } from "@/components/ui/EmptyState";
 import {
@@ -276,6 +276,7 @@ function Loans() {
 
 function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) {
   const updateLoan = useFinance((s) => s.updateLoan);
+  const accounts = useFinance((s) => s.accounts);
   const [form, setForm] = useState({
     bank: loan.bank,
     originalAmount: loan.originalAmount,
@@ -284,12 +285,16 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
     totalPayments: loan.totalPayments,
     monthlyPayment: loan.monthlyPayment,
     startDate: loan.startDate.slice(0, 10),
+    sourceAccountId: loan.sourceAccountId ?? "",
   });
   const [saving, setSaving] = useState(false);
 
   const submit = async () => {
     setSaving(true);
-    const res = await updateLoan(loan.id, form);
+    const res = await updateLoan(loan.id, {
+      ...form,
+      sourceAccountId: form.sourceAccountId || null,
+    });
     setSaving(false);
     if (res) onClose();
   };
@@ -325,6 +330,18 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
           <Label>Total de mensualidades</Label>
           <Input type="number" value={form.totalPayments} onChange={(e) => setForm({ ...form, totalPayments: Number(e.target.value) })} />
         </div>
+        <div className="space-y-1.5 col-span-2">
+          <Label>Se paga desde</Label>
+          <Select
+            value={form.sourceAccountId}
+            onChange={(e) => setForm({ ...form, sourceAccountId: e.target.value })}
+          >
+            <option value="">— Sin cuenta (no descontará saldo) —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.alias} · {a.bank}</option>
+            ))}
+          </Select>
+        </div>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
@@ -336,6 +353,7 @@ function EditLoanDialog({ loan, onClose }: { loan: Loan; onClose: () => void }) 
 
 function AddLoanDialog({ onClose }: { onClose: () => void }) {
   const addLoan = useFinance((s) => s.addLoan);
+  const accounts = useFinance((s) => s.accounts);
   const [form, setForm] = useState({
     bank: "",
     originalAmount: 0,
@@ -344,6 +362,7 @@ function AddLoanDialog({ onClose }: { onClose: () => void }) {
     totalPayments: 24,
     monthlyPayment: 0,
     startDate: new Date().toISOString().slice(0, 10),
+    sourceAccountId: accounts[0]?.id ?? "",
   });
 
   return (
@@ -407,13 +426,28 @@ function AddLoanDialog({ onClose }: { onClose: () => void }) {
             onChange={(e) => setForm({ ...form, totalPayments: Number(e.target.value) })}
           />
         </div>
+        <div className="space-y-1.5 col-span-2">
+          <Label>Se paga desde</Label>
+          <Select
+            value={form.sourceAccountId}
+            onChange={(e) => setForm({ ...form, sourceAccountId: e.target.value })}
+          >
+            <option value="">— Selecciona cuenta —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>{a.alias} · {a.bank}</option>
+            ))}
+          </Select>
+          <p className="text-xs text-ink-muted">
+            Cada pago registrado descontará la mensualidad de esta cuenta.
+          </p>
+        </div>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button
           onClick={() => {
-            if (!form.bank) return;
-            addLoan(form);
+            if (!form.bank || !form.sourceAccountId) return;
+            addLoan({ ...form, sourceAccountId: form.sourceAccountId });
             onClose();
           }}
         >
@@ -556,6 +590,8 @@ function MSI() {
 
 function EditMSIDialog({ msi, onClose }: { msi: MSIPurchase; onClose: () => void }) {
   const updateMSI = useFinance((s) => s.updateMSI);
+  const accounts = useFinance((s) => s.accounts);
+  const cards = useFinance((s) => s.cards);
   const [form, setForm] = useState({
     description: msi.description,
     store: msi.store,
@@ -563,12 +599,27 @@ function EditMSIDialog({ msi, onClose }: { msi: MSIPurchase; onClose: () => void
     totalMonths: msi.totalMonths,
     monthlyAmount: msi.monthlyAmount,
     monthsPaid: msi.monthsPaid,
+    sourceKey: msi.source ? `${msi.source.kind}:${msi.source.id}` : "",
   });
   const [saving, setSaving] = useState(false);
 
+  const sources = [
+    ...accounts.map((a) => ({ key: `account:${a.id}`, label: `${a.alias} · ${a.bank} (débito)` })),
+    ...cards.map((c) => ({ key: `card:${c.id}`, label: `${c.alias} · ${c.bank} (crédito)` })),
+  ];
+
   const submit = async () => {
     setSaving(true);
-    const res = await updateMSI(msi.id, form);
+    const [kind, id] = form.sourceKey ? form.sourceKey.split(":") : ["", ""];
+    const res = await updateMSI(msi.id, {
+      description: form.description,
+      store: form.store,
+      totalAmount: form.totalAmount,
+      totalMonths: form.totalMonths,
+      monthlyAmount: form.monthlyAmount,
+      monthsPaid: form.monthsPaid,
+      source: kind && id ? { kind: kind as "account" | "card", id } : null,
+    } as any);
     setSaving(false);
     if (res) onClose();
   };
@@ -620,6 +671,13 @@ function EditMSIDialog({ msi, onClose }: { msi: MSIPurchase; onClose: () => void
             onChange={(e) => setForm({ ...form, monthsPaid: Number(e.target.value) })}
           />
         </div>
+        <div className="space-y-1.5 col-span-2">
+          <Label>Se carga a</Label>
+          <Select value={form.sourceKey} onChange={(e) => setForm({ ...form, sourceKey: e.target.value })}>
+            <option value="">— Sin origen (no afectará saldos) —</option>
+            {sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </Select>
+        </div>
       </div>
       <DialogFooter>
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
@@ -631,6 +689,8 @@ function EditMSIDialog({ msi, onClose }: { msi: MSIPurchase; onClose: () => void
 
 function AddMSIDialog({ onClose }: { onClose: () => void }) {
   const addMSI = useFinance((s) => s.addMSI);
+  const accounts = useFinance((s) => s.accounts);
+  const cards = useFinance((s) => s.cards);
   const [form, setForm] = useState({
     description: "",
     store: "",
@@ -638,7 +698,13 @@ function AddMSIDialog({ onClose }: { onClose: () => void }) {
     totalMonths: 12,
     monthlyAmount: 0,
     startDate: new Date().toISOString().slice(0, 10),
+    sourceKey: cards[0] ? `card:${cards[0].id}` : accounts[0] ? `account:${accounts[0].id}` : "",
   });
+
+  const sources = [
+    ...accounts.map((a) => ({ key: `account:${a.id}`, label: `${a.alias} · ${a.bank} (débito)` })),
+    ...cards.map((c) => ({ key: `card:${c.id}`, label: `${c.alias} · ${c.bank} (crédito)` })),
+  ];
 
   return (
     <DialogContent>
@@ -695,6 +761,16 @@ function AddMSIDialog({ onClose }: { onClose: () => void }) {
             />
           </div>
         </div>
+        <div className="space-y-1.5">
+          <Label>Se carga a</Label>
+          <Select value={form.sourceKey} onChange={(e) => setForm({ ...form, sourceKey: e.target.value })}>
+            <option value="">— Selecciona origen —</option>
+            {sources.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+          </Select>
+          <p className="text-xs text-ink-muted">
+            Si es tarjeta, cada pago mensual aumentará su deuda. Si es cuenta, descontará el saldo.
+          </p>
+        </div>
         {form.monthlyAmount > 0 && (
           <div className="rounded-xl bg-brand-50/60 border border-brand-100 p-3 text-sm text-brand-800">
             Mensualidad: <strong>{formatCurrency(form.monthlyAmount)}</strong>
@@ -705,8 +781,17 @@ function AddMSIDialog({ onClose }: { onClose: () => void }) {
         <Button variant="ghost" onClick={onClose}>Cancelar</Button>
         <Button
           onClick={() => {
-            if (!form.description) return;
-            addMSI(form);
+            if (!form.description || !form.sourceKey) return;
+            const [kind, id] = form.sourceKey.split(":");
+            addMSI({
+              description: form.description,
+              store: form.store,
+              totalAmount: form.totalAmount,
+              totalMonths: form.totalMonths,
+              monthlyAmount: form.monthlyAmount,
+              startDate: form.startDate,
+              source: { kind: kind as "account" | "card", id },
+            });
             onClose();
           }}
         >

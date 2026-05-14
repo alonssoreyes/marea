@@ -210,6 +210,7 @@ type LoanInput = {
   totalPayments: number;
   monthlyPayment: number;
   startDate: string;
+  sourceAccountId?: string | null;
 };
 
 export const loansApi = {
@@ -229,6 +230,8 @@ type MSIInput = {
   totalMonths: number;
   monthlyAmount: number;
   startDate: string;
+  sourceKind?: "account" | "card" | null;
+  sourceId?: string | null;
 };
 
 export const msiApi = {
