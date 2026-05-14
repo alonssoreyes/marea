@@ -6,6 +6,7 @@
 import type {
   Account,
   Budget,
+  CardPayment,
   CreditCard,
   CreditCardExpense,
   DebitExpense,
@@ -226,6 +227,19 @@ export function toContribution(raw: any): SavingsContribution {
     date: iso(raw.date),
     amount: num(raw.amount),
     note: raw.note ?? undefined,
+  };
+}
+
+export function toCardPayment(raw: any): CardPayment {
+  return {
+    id: raw.id,
+    userId: raw.userId,
+    cardId: raw.cardId,
+    accountId: raw.accountId,
+    billingCycle: raw.billingCycle ?? null,
+    amount: num(raw.amount),
+    date: iso(raw.date),
+    note: raw.note ?? null,
   };
 }
 

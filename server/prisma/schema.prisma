@@ -60,6 +60,7 @@ model User {
   cards           CreditCard[]
   fixedExpenses   FixedExpense[]
   cardExpenses    CreditCardExpense[]
+  cardPayments    CardPayment[]
   debitExpenses   DebitExpense[]
   incomeEvents    IncomeEvent[]
   transfers       Transfer[]
@@ -98,6 +99,7 @@ model Account {
   incomeEvents   IncomeEvent[]
   transfersFrom  Transfer[]      @relation("TransferFrom")
   transfersTo    Transfer[]      @relation("TransferTo")
+  cardPayments   CardPayment[]
 
   @@index([userId])
 }
@@ -116,6 +118,7 @@ model CreditCard {
 
   user     User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   expenses CreditCardExpense[]
+  payments CardPayment[]
 
   @@index([userId])
 }
@@ -295,6 +298,27 @@ model Transfer {
   @@index([userId])
   @@index([fromAccountId, date])
   @@index([toAccountId, date])
+}
+
+model CardPayment {
+  id           String   @id @default(cuid())
+  userId       String
+  cardId       String
+  accountId    String
+  /// "yyyy-MM" — billing cycle this payment settles. Optional for ad-hoc payments.
+  billingCycle String?
+  amount       Decimal  @db.Decimal(14, 2)
+  date         DateTime @default(now())
+  note         String?
+  createdAt    DateTime @default(now())
+
+  user    User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  card    CreditCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+  account Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([cardId, billingCycle])
+  @@index([accountId, date])
 }
 
 model SavingsContribution {

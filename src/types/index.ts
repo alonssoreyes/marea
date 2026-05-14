@@ -114,6 +114,18 @@ export interface Transfer {
   note?: string;
 }
 
+export interface CardPayment {
+  id: ID;
+  userId: ID;
+  cardId: ID;
+  accountId: ID;
+  /** "yyyy-MM" — billing cycle this payment settles. Null = ad-hoc payment. */
+  billingCycle: string | null;
+  amount: number;
+  date: string; // ISO
+  note?: string | null;
+}
+
 export interface CreditCardExpense {
   id: ID;
   userId: ID;

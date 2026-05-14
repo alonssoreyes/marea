@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { CreditCard as CreditCardIcon, Plus, Calendar, ChevronRight, Receipt, Pencil } from "lucide-react";
+import { CreditCard as CreditCardIcon, Plus, Calendar, ChevronRight, Receipt, Pencil, CheckCircle2 } from "lucide-react";
 import type { CreditCard } from "@/types";
 import { useFinance } from "@/store/data";
 import { Button } from "@/components/ui/Button";
@@ -456,12 +456,31 @@ function CardMovements({
 }) {
   const card = useFinance((s) => s.cards.find((c) => c.id === cardId));
   const allExpenses = useFinance((s) => s.cardExpenses);
+  const allPayments = useFinance((s) => s.cardPayments);
   const removeExpense = useFinance((s) => s.removeCardExpense);
+  const removeCardPayment = useFinance((s) => s.removeCardPayment);
+  const [payingCycle, setPayingCycle] = useState<{ cycle: string; total: number } | null>(null);
 
   const expenses = useMemo(
     () => allExpenses.filter((e) => e.cardId === cardId),
     [allExpenses, cardId]
   );
+
+  const cardPaymentsForCard = useMemo(
+    () => allPayments.filter((p) => p.cardId === cardId),
+    [allPayments, cardId]
+  );
+
+  const paymentsByCycle = useMemo(() => {
+    const map = new Map<string, typeof cardPaymentsForCard>();
+    cardPaymentsForCard.forEach((p) => {
+      if (!p.billingCycle) return;
+      const list = map.get(p.billingCycle) ?? [];
+      list.push(p);
+      map.set(p.billingCycle, list);
+    });
+    return map;
+  }, [cardPaymentsForCard]);
 
   const byCycle = useMemo(() => {
     const map = new Map<string, typeof expenses>();
@@ -513,16 +532,67 @@ function CardMovements({
         ) : (
           byCycle.map(([cycle, items]) => {
             const total = items.reduce((s, e) => s + e.amount, 0);
+            const cyclePayments = paymentsByCycle.get(cycle) ?? [];
+            const paidTotal = cyclePayments.reduce((s, p) => s + p.amount, 0);
+            const fullyPaid = paidTotal >= total - 0.01;
             return (
               <div key={cycle}>
-                <div className="flex items-center justify-between mb-2">
-                  <Badge variant="soft">
-                    Ciclo {format(new Date(cycle + "-01"), "MMMM yyyy", { locale: es })}
-                  </Badge>
-                  <p className="text-sm font-semibold text-brand-900 tabular-nums">
-                    {formatCurrency(total)}
-                  </p>
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="soft">
+                      Ciclo {format(new Date(cycle + "-01"), "MMMM yyyy", { locale: es })}
+                    </Badge>
+                    {fullyPaid && (
+                      <Badge variant="outline" className="text-emerald-700 border-emerald-300">
+                        Pagado
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <p className="text-sm font-semibold text-brand-900 tabular-nums">
+                      {formatCurrency(total)}
+                    </p>
+                    {!fullyPaid && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setPayingCycle({ cycle, total: total - paidTotal })}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                        {paidTotal > 0 ? "Pagar resto" : "Marcar pagado"}
+                      </Button>
+                    )}
+                  </div>
                 </div>
+                {cyclePayments.length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {cyclePayments.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between text-xs py-1.5 px-2 rounded-lg bg-emerald-50 border border-emerald-100"
+                      >
+                        <span className="text-emerald-800">
+                          Pago · {formatDate(p.date, "d MMM yyyy")}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="font-medium text-emerald-900 tabular-nums">
+                            -{formatCurrency(p.amount)}
+                          </span>
+                          <button
+                            onClick={() => {
+                              if (confirm("¿Eliminar este pago? Se reintegrará el monto a la cuenta y a la deuda de la tarjeta.")) {
+                                removeCardPayment(p.id);
+                              }
+                            }}
+                            className="text-emerald-700/70 hover:text-danger"
+                          >
+                            Eliminar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="rounded-xl border border-line divide-y divide-line bg-surface">
                   {items.map((e) => (
                     <div key={e.id} className="flex items-center justify-between p-3">
@@ -554,6 +624,122 @@ function CardMovements({
           })
         )}
       </CardContent>
+      <Dialog open={!!payingCycle} onOpenChange={(o) => !o && setPayingCycle(null)}>
+        {payingCycle && (
+          <PayCycleDialog
+            cardId={cardId}
+            cycle={payingCycle.cycle}
+            defaultAmount={payingCycle.total}
+            onClose={() => setPayingCycle(null)}
+          />
+        )}
+      </Dialog>
     </Card>
+  );
+}
+
+function PayCycleDialog({
+  cardId,
+  cycle,
+  defaultAmount,
+  onClose,
+}: {
+  cardId: string;
+  cycle: string;
+  defaultAmount: number;
+  onClose: () => void;
+}) {
+  const accounts = useFinance((s) => s.accounts);
+  const addCardPayment = useFinance((s) => s.addCardPayment);
+  const [form, setForm] = useState({
+    accountId: accounts[0]?.id ?? "",
+    amount: defaultAmount,
+    date: new Date().toISOString().slice(0, 10),
+    note: "",
+  });
+  const [saving, setSaving] = useState(false);
+
+  const account = accounts.find((a) => a.id === form.accountId);
+  const insufficient = account ? account.balance < form.amount : false;
+
+  const submit = async () => {
+    if (!form.accountId || !form.amount) return;
+    setSaving(true);
+    const res = await addCardPayment({
+      cardId,
+      accountId: form.accountId,
+      amount: form.amount,
+      billingCycle: cycle,
+      date: new Date(form.date).toISOString(),
+      note: form.note || null,
+    });
+    setSaving(false);
+    if (res) onClose();
+  };
+
+  return (
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>
+          Pagar ciclo {format(new Date(cycle + "-01"), "MMMM yyyy", { locale: es })}
+        </DialogTitle>
+        <DialogDescription>
+          Se descontará el monto de la cuenta y bajará la deuda de la tarjeta.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="space-y-3">
+        <div className="space-y-1.5">
+          <Label>Cuenta desde donde pagas</Label>
+          <Select
+            value={form.accountId}
+            onChange={(e) => setForm({ ...form, accountId: e.target.value })}
+          >
+            <option value="">— Selecciona cuenta —</option>
+            {accounts.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.alias} · {a.bank} ({formatCurrency(a.balance)})
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label>Monto</Label>
+            <Input
+              type="number"
+              value={form.amount || ""}
+              onChange={(e) => setForm({ ...form, amount: Number(e.target.value) })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Fecha</Label>
+            <Input
+              type="date"
+              value={form.date}
+              onChange={(e) => setForm({ ...form, date: e.target.value })}
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Nota (opcional)</Label>
+          <Input
+            value={form.note}
+            onChange={(e) => setForm({ ...form, note: e.target.value })}
+            placeholder="Pago mínimo, pago total..."
+          />
+        </div>
+        {insufficient && (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+            La cuenta no tiene saldo suficiente. Se registrará igual y la cuenta quedará en negativo.
+          </div>
+        )}
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+        <Button onClick={submit} disabled={saving || !form.accountId || !form.amount}>
+          {saving ? "Registrando..." : "Registrar pago"}
+        </Button>
+      </DialogFooter>
+    </DialogContent>
   );
 }

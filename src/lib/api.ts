@@ -152,6 +152,19 @@ export const fixedExpensesApi = {
   remove: (id: string) => api.delete<void>(`/fixed-expenses/${id}`),
 };
 
+export const cardPaymentsApi = {
+  list: () => api.get<{ cardPayments: unknown[] }>("/card-payments"),
+  create: (data: {
+    cardId: string;
+    accountId: string;
+    amount: number;
+    billingCycle?: string | null;
+    date?: string;
+    note?: string | null;
+  }) => api.post<{ cardPayment: unknown }>("/card-payments", data),
+  remove: (id: string) => api.delete<void>(`/card-payments/${id}`),
+};
+
 export const cardExpensesApi = {
   list: () => api.get<{ cardExpenses: unknown[] }>("/card-expenses"),
   create: (data: {

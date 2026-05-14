@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import type {
   Account,
   Budget,
+  CardPayment,
   CreditCard,
   CreditCardExpense,
   DebitExpense,
@@ -20,6 +21,7 @@ import {
   accountsApi,
   budgetsApi,
   cardExpensesApi,
+  cardPaymentsApi,
   cardsApi,
   debitExpensesApi,
   fixedExpensesApi,
@@ -35,6 +37,7 @@ import {
   toBudget,
   toCard,
   toCardExpense,
+  toCardPayment,
   toDebitExpense,
   toFixedExpense,
   toGoal,
@@ -61,6 +64,7 @@ type FinanceState = {
   cards: CreditCard[];
   fixedExpenses: FixedExpense[];
   cardExpenses: CreditCardExpense[];
+  cardPayments: CardPayment[];
   debitExpenses: DebitExpense[];
   incomeEvents: IncomeEvent[];
   transfers: Transfer[];
@@ -83,6 +87,7 @@ type FinanceState = {
     cards: CreditCard[];
     fixedExpenses: FixedExpense[];
     cardExpenses: CreditCardExpense[];
+    cardPayments: CardPayment[];
     debitExpenses: DebitExpense[];
     incomeEvents: IncomeEvent[];
     transfers: Transfer[];
@@ -126,6 +131,12 @@ type FinanceState = {
     data: Omit<CreditCardExpense, "id" | "userId" | "billingCycle" | "dueDate">
   ) => Promise<CreditCardExpense | null>;
   removeCardExpense: (id: string) => Promise<boolean>;
+
+  // card payments (paying off a card cycle from a debit account)
+  addCardPayment: (
+    data: Omit<CardPayment, "id" | "userId">
+  ) => Promise<CardPayment | null>;
+  removeCardPayment: (id: string) => Promise<boolean>;
 
   // debit expenses
   addDebitExpense: (
@@ -197,6 +208,7 @@ const emptyState = () => ({
   cards: [],
   fixedExpenses: [],
   cardExpenses: [],
+  cardPayments: [],
   debitExpenses: [],
   incomeEvents: [],
   transfers: [],
@@ -233,6 +245,7 @@ export const useFinance = create<FinanceState>()(
           cards: data.cards,
           fixedExpenses: data.fixedExpenses,
           cardExpenses: data.cardExpenses,
+          cardPayments: data.cardPayments,
           debitExpenses: data.debitExpenses,
           incomeEvents: data.incomeEvents,
           transfers: data.transfers,
@@ -503,6 +516,58 @@ export const useFinance = create<FinanceState>()(
           return true;
         } catch (err) {
           handleError(err, "No se pudo eliminar el gasto");
+          return false;
+        }
+      },
+
+      // ---- Card payments ----
+      addCardPayment: async (data) => {
+        try {
+          const res = await cardPaymentsApi.create({
+            cardId: data.cardId,
+            accountId: data.accountId,
+            amount: data.amount,
+            billingCycle: data.billingCycle,
+            date: data.date,
+            note: data.note,
+          });
+          const payment = toCardPayment(res.cardPayment);
+          set((s) => ({
+            cardPayments: [payment, ...s.cardPayments],
+            accounts: s.accounts.map((a) =>
+              a.id === data.accountId ? { ...a, balance: a.balance - data.amount } : a
+            ),
+            cards: s.cards.map((c) =>
+              c.id === data.cardId
+                ? { ...c, balance: Math.max(0, c.balance - data.amount) }
+                : c
+            ),
+          }));
+          return payment;
+        } catch (err) {
+          handleError(err, "No se pudo registrar el pago de la tarjeta");
+          return null;
+        }
+      },
+      removeCardPayment: async (id) => {
+        try {
+          await cardPaymentsApi.remove(id);
+          set((s) => {
+            const p = s.cardPayments.find((x) => x.id === id);
+            if (!p) return s;
+            return {
+              cardPayments: s.cardPayments.filter((x) => x.id !== id),
+              accounts: s.accounts.map((a) =>
+                a.id === p.accountId ? { ...a, balance: a.balance + p.amount } : a
+              ),
+              cards: s.cards.map((c) =>
+                c.id === p.cardId ? { ...c, balance: c.balance + p.amount } : c
+              ),
+            };
+          });
+          return true;
+        } catch (err) {
+          handleError(err, "No se pudo eliminar el pago");
           return false;
         }
       },
