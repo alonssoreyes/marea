@@ -23,7 +23,9 @@ async function request<T>(path: string, options: Options = {}): Promise<T> {
   const { body, headers, ...rest } = options;
   const token = useAuth.getState().token;
 
-  const res = await fetch(`/api${path}`, {
+  const API_URL = import.meta.env.VITE_API_URL;
+
+  const res = await fetch(`${API_URL}/api${path}`, {
     ...rest,
     headers: {
       "Content-Type": "application/json",
