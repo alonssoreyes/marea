@@ -86,7 +86,7 @@ export function useBootstrap(): BootstrapState {
           cardsApi.list(),
           fixedExpensesApi.list(),
           cardExpensesApi.list(),
-          cardPaymentsApi.list(),
+          cardPaymentsApi.list().catch(() => ({ cardPayments: [] })),
           debitExpensesApi.list(),
           incomeEventsApi.list(),
           transfersApi.list(),

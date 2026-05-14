@@ -501,7 +501,19 @@ function CardMovements({
           <CardTitle>Movimientos · {card.alias}</CardTitle>
           <CardDescription>Agrupados por ciclo de facturación.</CardDescription>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
+          {card.balance > 0 && (
+            <Button
+              size="sm"
+              onClick={() => {
+                const sched = byCycle[0]?.[0];
+                setPayingCycle({ cycle: sched ?? "", total: card.balance });
+              }}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Pagar tarjeta
+            </Button>
+          )}
           <Button
             variant="secondary"
             size="sm"
@@ -669,7 +681,7 @@ function PayCycleDialog({
       cardId,
       accountId: form.accountId,
       amount: form.amount,
-      billingCycle: cycle,
+      billingCycle: cycle || null,
       date: new Date(form.date).toISOString(),
       note: form.note || null,
     });
@@ -681,7 +693,9 @@ function PayCycleDialog({
     <DialogContent>
       <DialogHeader>
         <DialogTitle>
-          Pagar ciclo {format(new Date(cycle + "-01"), "MMMM yyyy", { locale: es })}
+          {cycle
+            ? `Pagar ciclo ${format(new Date(cycle + "-01"), "MMMM yyyy", { locale: es })}`
+            : "Pagar tarjeta"}
         </DialogTitle>
         <DialogDescription>
           Se descontará el monto de la cuenta y bajará la deuda de la tarjeta.

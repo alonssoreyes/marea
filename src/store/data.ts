@@ -917,7 +917,10 @@ export const useFinance = create<FinanceState>()(
     {
       name: "marea-data",
       onRehydrateStorage: () => (state) => {
-        state && (state.hydrated = true);
+        if (!state) return;
+        state.hydrated = true;
+        // Defensive defaults for fields added after the initial release
+        if (!Array.isArray(state.cardPayments)) state.cardPayments = [];
       },
     }
   )
